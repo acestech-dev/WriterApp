@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aces Novel Editor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="toolbar">
+    <div class="status-kiri">
+      <span class="brand">ACES EDITOR</span>
+      <span id="status-simpan" class="badge">Tersimpan</span>
+    </div>
+    <div class="aksi-kanan">
+      <span id="jumlah-kata" class="counter">0 Kata</span>
+      <button id="btn-export" class="btn-aksi">Unduh .TXT</button>
+    </div>
+  </header>
+
+  <main class="area-tulis">
+    <input type="text" id="judul-bab" placeholder="Judul Bab (misal: Bab 1 - Awal Mula)..." autocomplete="off">
+    <textarea id="isi-cerita" placeholder="Mulai tulis ceritamu di sini..."></textarea>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

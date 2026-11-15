@@ -1,0 +1,100 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #121212;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.toolbar {
+  background-color: #1e1e1e;
+  border-bottom: 1px solid #333;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.status-kiri, .aksi-kanan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand {
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.badge {
+  font-size: 11px;
+  background-color: #2e3b32;
+  color: #6ee7b7;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.counter {
+  font-size: 13px;
+  color: #a0a0a0;
+}
+
+.btn-aksi {
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-aksi:hover {
+  background-color: #1d4ed8;
+}
+
+.area-tulis {
+  flex: 1;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 25px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+#judul-bab {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #2c2c2c;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: bold;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+  outline: none;
+}
+
+#isi-cerita {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #d4d4d4;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 18px;
+  line-height: 1.8;
+  resize: none;
+  outline: none;
+}
