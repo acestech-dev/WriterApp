@@ -24,6 +24,7 @@ let daftarBuku = muatBuku();
 let warnaSampul = '#1e3a5f';
 let coverBase64 = '';
 let idBukuAktif = null;
+let modeEditBuku = false;
 let konfirmasiHapus = false;
 let warnaTokoh = '#ef4444';
 let expandedTokohId = null;
@@ -226,6 +227,45 @@ function renderDaftarTokoh(buku) {
   });
 }
 
+function bukaFormBuku(editMode = false) {
+  modeEditBuku = editMode;
+  $('form-buku-baru').reset();
+
+  if (editMode && bukuAktif()) {
+    const buku = bukuAktif();
+    $('modal-buku-judul').textContent = 'Edit Informasi Buku';
+    $('btn-submit-buku').textContent = 'Simpan Perubahan';
+
+    $('input-judul').value = buku.judul;
+    $('input-status').value = buku.status;
+    $('input-target').value = buku.targetKata;
+    $('input-blurb').value = buku.blurb || '';
+
+    warnaSampul = buku.warna || '#1e3a5f';
+    document.querySelectorAll('.warna-opsi').forEach((b) => {
+      b.classList.toggle('active', b.dataset.color === warnaSampul);
+    });
+
+    coverBase64 = buku.cover || '';
+    if (coverBase64) {
+      $('preview-cover-img').src = coverBase64;
+      $('preview-cover-box').classList.remove('hidden');
+    } else {
+      $('preview-cover-box').classList.add('hidden');
+    }
+  } else {
+    $('modal-buku-judul').textContent = 'Buat Buku Baru';
+    $('btn-submit-buku').textContent = 'Simpan Buku';
+    coverBase64 = '';
+    $('preview-cover-box').classList.add('hidden');
+    warnaSampul = '#1e3a5f';
+    document.querySelectorAll('.warna-opsi').forEach((b, i) => b.classList.toggle('active', i === 0));
+  }
+
+  $('modal-buat-buku').classList.remove('hidden');
+  $('input-judul').focus();
+}
+
 function bukaDetailBuku(id) {
   const buku = daftarBuku.find((b) => b.id === id);
   if (!buku) return;
@@ -258,13 +298,11 @@ document.addEventListener('click', (e) => {
   const t = e.target;
 
   if (t.closest('#btn-tambah-buku')) {
-    $('form-buku-baru').reset();
-    coverBase64 = '';
-    $('preview-cover-box').classList.add('hidden');
-    warnaSampul = '#1e3a5f';
-    document.querySelectorAll('.warna-opsi').forEach((b, i) => b.classList.toggle('active', i === 0));
-    $('modal-buat-buku').classList.remove('hidden');
-    $('input-judul').focus();
+    bukaFormBuku(false);
+  }
+
+  if (t.closest('#btn-edit-buku')) {
+    bukaFormBuku(true);
   }
 
   if (t.closest('#btn-tutup-buat') || t.closest('#btn-batal-buat')) {
@@ -328,28 +366,39 @@ $('input-cover')?.addEventListener('change', (e) => {
   reader.readAsDataURL(file);
 });
 
-// Submit Buku Baru
+// Submit Buat atau Edit Buku
 $('form-buku-baru')?.addEventListener('submit', (e) => {
   e.preventDefault();
   const judul = $('input-judul').value.trim();
   if (!judul) return;
 
-  daftarBuku.unshift({
-    id: Date.now().toString(),
+  const dataForm = {
     judul,
     status: $('input-status').value,
     targetKata: parseInt($('input-target').value, 10) || 1000,
     warna: warnaSampul,
     cover: coverBase64,
-    blurb: $('input-blurb').value.trim(),
-    tokoh: [],
-    bab: [],
-    dibuatPada: new Date().toISOString()
-  });
+    blurb: $('input-blurb').value.trim()
+  };
 
-  simpan();
-  renderRakBuku();
-  $('modal-buat-buku').classList.add('hidden');
+  if (modeEditBuku && bukuAktif()) {
+    Object.assign(bukuAktif(), dataForm);
+    simpan();
+    renderRakBuku();
+    $('modal-buat-buku').classList.add('hidden');
+    bukaDetailBuku(idBukuAktif);
+  } else {
+    daftarBuku.unshift({
+      id: Date.now().toString(),
+      ...dataForm,
+      tokoh: [],
+      bab: [],
+      dibuatPada: new Date().toISOString()
+    });
+    simpan();
+    renderRakBuku();
+    $('modal-buat-buku').classList.add('hidden');
+  }
 });
 
 // Custom Color Picker Tokoh
