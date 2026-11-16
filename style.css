@@ -60,6 +60,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s;
+  white-space: nowrap;
 }
 
 .btn-primary:hover {
@@ -241,12 +242,20 @@ body {
   overflow-y: auto;
 }
 
+.modal-detail-box {
+  max-width: 580px;
+}
+
 .modal-header {
   padding: 16px 20px;
   border-bottom: 1px solid #2e2e32;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  position: sticky;
+  top: 0;
+  background-color: #18181b;
+  z-index: 10;
 }
 
 .modal-header h3 {
@@ -267,7 +276,7 @@ body {
   padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .form-group {
@@ -304,6 +313,7 @@ textarea {
   font-size: 14px;
   font-family: inherit;
   outline: none;
+  width: 100%;
 }
 
 input:focus,
@@ -381,8 +391,8 @@ input[type="file"] {
 }
 
 .detail-cover {
-  width: 90px;
-  height: 125px;
+  width: 84px;
+  height: 116px;
   border-radius: 6px;
   flex-shrink: 0;
   background-size: cover;
@@ -418,20 +428,317 @@ input[type="file"] {
   color: #9ca3af;
 }
 
-.detail-blurb-section h4 {
+.detail-blurb-section h4,
+.tokoh-section-header h4 {
   font-size: 13px;
   color: #a1a1aa;
+}
+
+.detail-blurb-section h4 {
   margin-bottom: 6px;
 }
 
 .detail-blurb-section p {
-  font-size: 14px;
+  font-size: 13.5px;
   color: #e4e4e7;
-  line-height: 1.6;
+  line-height: 1.55;
   white-space: pre-line;
   background-color: #27272a;
-  padding: 12px;
+  padding: 10px 12px;
   border-radius: 6px;
+}
+
+/* Manajemen Tokoh & Alias */
+.detail-tokoh-section {
+  border-top: 1px solid #2e2e32;
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tokoh-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tokoh-form-card {
+  background-color: #202024;
+  border: 1px solid #323238;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tokoh-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.tokoh-color-picker-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.color-label {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.color-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.swatch-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.12s;
+}
+
+.swatch-btn:hover:not(.used) {
+  transform: scale(1.12);
+}
+
+.swatch-btn.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px #18181b, 0 0 0 4px #3b82f6;
+}
+
+.swatch-btn.used {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.swatch-btn.used::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -2px;
+  right: -2px;
+  height: 2px;
+  background-color: #ffffff;
+  transform: rotate(-45deg);
+}
+
+.custom-color-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #27272a;
+  border: 1px solid #3f3f46;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #d4d4d8;
+}
+
+.custom-color-wrap input[type="color"] {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.inline-error {
+  font-size: 12px;
+  color: #f87171;
+  background-color: rgba(127, 29, 29, 0.35);
+  border: 1px solid #991b1b;
+  padding: 6px 10px;
+  border-radius: 5px;
+}
+
+/* Accordion Dropdown Tokoh */
+.tokoh-accordion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tokoh-empty-msg {
+  font-size: 13px;
+  color: #71717a;
+  text-align: center;
+  padding: 14px;
+  background-color: #1f1f23;
+  border-radius: 6px;
+}
+
+.tokoh-item {
+  background-color: #222226;
+  border: 1px solid #323238;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tokoh-header {
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s;
+}
+
+.tokoh-header:hover {
+  background-color: #29292e;
+}
+
+.tokoh-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tokoh-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tokoh-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.tokoh-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.alias-count-badge {
+  font-size: 11px;
+  color: #a1a1aa;
+  background-color: #18181b;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.tokoh-chevron {
+  font-size: 12px;
+  color: #a1a1aa;
+  transition: transform 0.2s;
+}
+
+.tokoh-item.open .tokoh-chevron {
+  transform: rotate(180deg);
+}
+
+.btn-delete-tokoh {
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.btn-delete-tokoh:hover {
+  color: #f87171;
+}
+
+/* Isi Dropdown Alias */
+.tokoh-body {
+  display: none;
+  padding: 12px;
+  border-top: 1px solid #2e2e34;
+  background-color: #1b1b1f;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tokoh-item.open .tokoh-body {
+  display: flex;
+}
+
+.alias-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alias-empty {
+  font-size: 12px;
+  color: #71717a;
+  font-style: italic;
+}
+
+.alias-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.06);
+  border: 1px solid currentColor;
+}
+
+.btn-remove-alias {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.btn-remove-alias:hover {
+  opacity: 1;
+}
+
+.alias-add-form {
+  display: flex;
+  gap: 8px;
+}
+
+.alias-add-form input {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.btn-add-alias {
+  background-color: #27272a;
+  color: #e4e4e7;
+  border: 1px solid #3f3f46;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-add-alias:hover {
+  border-color: #60a5fa;
+  color: #ffffff;
 }
 
 .detail-actions {
