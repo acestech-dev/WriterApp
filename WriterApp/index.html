@@ -3,26 +3,124 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aces Novel Editor</title>
+  <title>WriterApp - Rak Buku</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <header class="toolbar">
-    <div class="status-kiri">
-      <span class="brand">WriterApp</span>
-      <span id="status-simpan" class="badge">Tersimpan</span>
+  <!-- Header Sticky -->
+  <header class="topbar">
+    <div class="topbar-kiri">
+      <span class="brand">WRITERAPP</span>
+      <span id="jumlah-buku" class="badge-count">0 Buku</span>
     </div>
-    <div class="aksi-kanan">
-      <span id="jumlah-kata" class="counter">0 Kata</span>
-      <button id="btn-export" class="btn-aksi">Unduh .TXT</button>
-    </div>
+    <button id="btn-tambah-buku" class="btn-primary">+ Buku Baru</button>
   </header>
 
-  <main class="area-tulis">
-    <input type="text" id="judul-bab" placeholder="Judul Bab (misal: Bab 1 - Awal Mula)..." autocomplete="off">
-    <textarea id="isi-cerita" placeholder="Mulai tulis ceritamu di sini..."></textarea>
+  <!-- Area Utama Rak Buku -->
+  <main class="container">
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">📚</div>
+      <h2>Rak Buku Masih Kosong</h2>
+      <p>Tekan tombol <strong>+ Buku Baru</strong> di pojok kanan atas untuk mulai membuat folder naskah novel pertamamu.</p>
+    </div>
+
+    <div id="rak-buku" class="rak-grid"></div>
   </main>
+
+  <!-- Modal Buat Buku Baru -->
+  <div id="modal-buat-buku" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Buat Buku Baru</h3>
+        <button id="btn-tutup-buat" class="btn-close" aria-label="Tutup">&times;</button>
+      </div>
+
+      <form id="form-buku-baru" class="modal-body">
+        <div class="form-group">
+          <label for="input-judul">Judul Buku <span class="wajib">*</span></label>
+          <input type="text" id="input-judul" placeholder="Contoh: Vanguard Technology Academy" required autocomplete="off">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="input-status">Status Naskah</label>
+            <select id="input-status">
+              <option value="Draft">Draft</option>
+              <option value="On-Going">On-Going</option>
+              <option value="Tamat">Tamat</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="input-target">Target Kata / Bab</label>
+            <input type="number" id="input-target" value="1000" min="100" step="100">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Warna Tema Sampul (Jika Tanpa Gambar)</label>
+          <div class="warna-pilihan" id="pilihan-warna">
+            <button type="button" class="warna-opsi active" data-color="#1e3a5f" style="background-color: #1e3a5f;" title="Biru Navy"></button>
+            <button type="button" class="warna-opsi" data-color="#5c1d24" style="background-color: #5c1d24;" title="Merah Marun"></button>
+            <button type="button" class="warna-opsi" data-color="#1b4332" style="background-color: #1b4332;" title="Hijau Zamrud"></button>
+            <button type="button" class="warna-opsi" data-color="#3b235a" style="background-color: #3b235a;" title="Ungu Royal"></button>
+            <button type="button" class="warna-opsi" data-color="#2b2d42" style="background-color: #2b2d42;" title="Abu Arang"></button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="input-cover">Cover Buku (Opsional)</label>
+          <input type="file" id="input-cover" accept="image/*">
+          <div id="preview-cover-box" class="preview-cover-box hidden">
+            <img id="preview-cover-img" src="" alt="Pratinjau Cover">
+            <button type="button" id="btn-hapus-cover" class="btn-hapus-img">Hapus Gambar</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="input-blurb">Blurb / Sinopsis (Opsional)</label>
+          <textarea id="input-blurb" rows="4" placeholder="Tulis ringkasan cerita atau catatan konsep novel di sini..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-batal-buat" class="btn-secondary">Batal</button>
+          <button type="submit" class="btn-primary">Simpan Buku</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Detail Buku -->
+  <div id="modal-detail-buku" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Detail Naskah</h3>
+        <button id="btn-tutup-detail" class="btn-close" aria-label="Tutup">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="detail-top">
+          <div id="detail-cover-wrap" class="detail-cover"></div>
+          <div class="detail-info">
+            <span id="detail-status" class="status-badge">Draft</span>
+            <h2 id="detail-judul">Judul Buku</h2>
+            <p id="detail-target" class="detail-meta">Target: 1.000 kata / bab</p>
+          </div>
+        </div>
+
+        <div class="detail-blurb-section">
+          <h4>Blurb / Sinopsis</h4>
+          <p id="detail-blurb">Belum ada sinopsis.</p>
+        </div>
+
+        <div class="modal-footer detail-actions">
+          <button type="button" id="btn-hapus-buku" class="btn-danger">Hapus Buku</button>
+          <button type="button" id="btn-buka-bab" class="btn-primary">Buka Daftar Bab &rarr;</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
