@@ -13,6 +13,7 @@ function muatBuku() {
     return raw.map((b) => ({
       ...b,
       tokoh: Array.isArray(b.tokoh) ? b.tokoh : [],
+      istilah: Array.isArray(b.istilah) ? b.istilah : [],
       bab: Array.isArray(b.bab)
         ? b.bab.map((bab) => ({
             ...bab,
@@ -38,10 +39,11 @@ let konfirmasiHapus = false;
 let warnaTokoh = '#ef4444';
 let expandedTokohId = null;
 
-// State Autocomplete
+// State Autocomplete & Fokus Editor Terakhir
 let acMatches = [];
 let acIndex = 0;
-let acTargetInfo = null; // { el, outIdx, pIdx, prefixLen }
+let acTargetInfo = null; // { el, outIdx, pIdx, prefixLen, mode }
+let lastActiveEditor = null; // { el, outIdx, pIdx }
 
 const simpan = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(daftarBuku));
 const bukuAktif = () => daftarBuku.find((b) => b.id === idBukuAktif);
@@ -62,8 +64,12 @@ function formatKapital(teks) {
     .map((k) => k.charAt(0).toUpperCase() + k.slice(1)).join(' ');
 }
 
+function stripItalicTags(teks) {
+  return (teks || '').replace(/<\/?i>/gi, '');
+}
+
 function hitungKata(teks) {
-  const bersih = (teks || '').trim();
+  const bersih = stripItalicTags(teks).trim();
   return bersih ? bersih.split(/\s+/).length : 0;
 }
 
@@ -75,7 +81,6 @@ function hitungKataBab(bab) {
   return (bab.outlines || []).reduce((acc, out) => acc + hitungKataOutline(out), 0);
 }
 
-// Navigasi Antar Layar
 function tampilkanView(viewId) {
   ['view-rak', 'view-bab-list', 'view-editor-bab', 'view-preview-bab', 'view-final-bab'].forEach((id) => {
     $(id).classList.toggle('hidden', id !== viewId);
@@ -83,7 +88,34 @@ function tampilkanView(viewId) {
   tutupAutocomplete();
 }
 
-// ================= HELPER TOKOH, WARNA & HIGHLIGHT =================
+// ================= SERIALISASI ITALIC & WARNA TOKOH =================
+// Ubah DOM contenteditable menjadi string teks dengan penanda <i>...</i>
+function serializeEditor(el) {
+  let out = '';
+  el.childNodes.forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.nodeValue.replace(/\r?\n/g, '');
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const inner = serializeEditor(node);
+      const isItalic =
+        node.tagName === 'I' ||
+        node.tagName === 'EM' ||
+        node.style.fontStyle === 'italic';
+      if (isItalic && inner) {
+        out += `<i>${inner}</i>`;
+      } else {
+        out += inner;
+      }
+    }
+  });
+  return out;
+}
+
+// Konversi *teks miring* menjadi <i>teks miring</i> jika diketik manual
+function konversiBintangKeItalic(markup) {
+  return markup.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
+}
+
 function hexToRgb(hex) {
   const h = hex.replace('#', '');
   return {
@@ -122,7 +154,14 @@ function setErrorTokoh(pesan = '') {
   el.classList.toggle('hidden', !pesan);
 }
 
-// Kumpulkan seluruh entitas tokoh & alias diurutkan dari terpanjang
+function setErrorIstilah(pesan = '') {
+  const el = $('error-istilah');
+  if (!el) return;
+  el.textContent = pesan;
+  el.classList.toggle('hidden', !pesan);
+}
+
+// Kumpulkan tokoh & alias untuk pewarnaan dan kapital otomatis
 function dapatkanEntitasTokoh(buku) {
   if (!buku || !Array.isArray(buku.tokoh)) return [];
   const items = [];
@@ -135,22 +174,35 @@ function dapatkanEntitasTokoh(buku) {
   return items.sort((a, b) => b.teks.length - a.teks.length);
 }
 
-// Ubah teks biasa menjadi teks dengan kapitalisasi tokoh otomatis
-function terapkanKapitalTokoh(teks, buku) {
-  const entitas = dapatkanEntitasTokoh(buku);
-  if (!entitas.length || !teks) return teks;
+// Terapkan kapitalisasi tokoh & konsistensi ejaan istilah di luar tag <i>
+function formatTeksKonsisten(markup, buku) {
+  if (!markup) return '';
+  const entitasTokoh = dapatkanEntitasTokoh(buku);
+  const daftarIstilah = (buku?.istilah || []).slice().sort((a, b) => b.kata.length - a.kata.length);
 
-  let hasil = teks;
-  entitas.forEach((ent) => {
-    const regex = new RegExp(`(^|[^a-zA-Z0-9_])(${escapeRegExp(ent.teks)})(?=$|[^a-zA-Z0-9_])`, 'gi');
-    hasil = hasil.replace(regex, (_, sebelum) => `${sebelum}${ent.teks}`);
-  });
-  return hasil;
+  return markup
+    .split(/(<\/?i>)/gi)
+    .map((bagian) => {
+      if (bagian.toLowerCase() === '<i>' || bagian.toLowerCase() === '</i>') return bagian;
+      let teks = bagian;
+
+      entitasTokoh.forEach((ent) => {
+        const regex = new RegExp(`(^|[^a-zA-Z0-9_])(${escapeRegExp(ent.teks)})(?=$|[^a-zA-Z0-9_])`, 'gi');
+        teks = teks.replace(regex, (_, sebelum) => `${sebelum}${ent.teks}`);
+      });
+
+      daftarIstilah.forEach((ist) => {
+        const regex = new RegExp(`(^|[^a-zA-Z0-9_])(${escapeRegExp(ist.kata)})(?=$|[^a-zA-Z0-9_])`, 'gi');
+        teks = teks.replace(regex, (_, sebelum) => `${sebelum}${ist.kata}`);
+      });
+
+      return teks;
+    })
+    .join('');
 }
 
-// Render HTML berwarna untuk nama tokoh & alias
-function renderTeksBerwarnaHTML(teks, buku) {
-  const entitas = dapatkanEntitasTokoh(buku);
+// Render teks biasa menjadi HTML dengan warna tokoh
+function renderSegmenBerwarna(teks, entitas) {
   if (!entitas.length || !teks) return escapeHTML(teks || '');
 
   const pola = entitas.map((e) => escapeRegExp(e.teks)).join('|');
@@ -178,7 +230,38 @@ function renderTeksBerwarnaHTML(teks, buku) {
   return hasil;
 }
 
-// Simpan & Pulihkan Posisi Kursor (Caret) pada ContentEditable
+// Render markup lengkap (mendukung <i>...</i> + warna tokoh di dalam & luar italic)
+function renderMarkupEditorHTML(markup, buku) {
+  if (!markup) return '';
+  const entitas = dapatkanEntitasTokoh(buku);
+  return markup
+    .split(/(<i>[\s\S]*?<\/i>)/gi)
+    .map((part) => {
+      if (/^<i>[\s\S]*<\/i>$/i.test(part)) {
+        const isi = part.replace(/^<i>|<\/i>$/gi, '');
+        return `<em>${renderSegmenBerwarna(isi, entitas)}</em>`;
+      }
+      return renderSegmenBerwarna(part, entitas);
+    })
+    .join('');
+}
+
+// Render paragraf final (tanpa warna tokoh, tetap mempertahankan italic <em>)
+function renderMarkupFinalHTML(markup) {
+  if (!markup) return '';
+  return markup
+    .split(/(<i>[\s\S]*?<\/i>)/gi)
+    .map((part) => {
+      if (/^<i>[\s\S]*<\/i>$/i.test(part)) {
+        const isi = part.replace(/^<i>|<\/i>$/gi, '');
+        return `<em>${escapeHTML(isi)}</em>`;
+      }
+      return escapeHTML(part);
+    })
+    .join('');
+}
+
+// Simpan & Pulihkan Posisi Kursor (Caret)
 function getCaretOffset(el) {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return 0;
@@ -222,7 +305,7 @@ function setCaretOffset(el, offset) {
   sel.addRange(range);
 }
 
-// ================= VIEW 1: RAK BUKU & DETAIL =================
+// ================= VIEW 1: RAK BUKU & DETAIL (TOKOH + ISTILAH) =================
 function renderRakBuku() {
   $('jumlah-buku').textContent = `${daftarBuku.length} Buku`;
   const rak = $('rak-buku');
@@ -243,7 +326,7 @@ function renderRakBuku() {
       </div>
       <div class="card-body">
         <div class="card-title">${escapeHTML(buku.judul)}</div>
-        <div class="card-meta">${buku.tokoh.length} Tokoh &bull; ${buku.bab.length} Bab &bull; Target ${Number(buku.targetKata).toLocaleString('id-ID')} kata</div>
+        <div class="card-meta">${buku.tokoh.length} Tokoh &bull; ${buku.istilah.length} Istilah &bull; ${buku.bab.length} Bab</div>
         <div class="card-blurb">${buku.blurb ? escapeHTML(buku.blurb) : 'Belum ada sinopsis.'}</div>
       </div>
     `;
@@ -368,6 +451,34 @@ function renderDaftarTokoh(buku) {
   });
 }
 
+function renderDaftarIstilah(buku) {
+  $('jumlah-istilah').textContent = `${buku.istilah.length} Istilah`;
+  const grid = $('daftar-istilah');
+  grid.innerHTML = '';
+
+  if (buku.istilah.length === 0) {
+    grid.innerHTML = `<div class="tokoh-empty-msg">Belum ada istilah/efek bunyi. Contoh: <strong>Aarrkkhh</strong> (Teriakan), <strong>Duuaarrr</strong> (Ledakan), <strong>Tuiiingg</strong> (Benda jatuh).</div>`;
+    return;
+  }
+
+  buku.istilah.forEach((ist, idx) => {
+    const chip = document.createElement('div');
+    chip.className = 'istilah-chip';
+    chip.innerHTML = `
+      <span class="istilah-chip-word">${escapeHTML(ist.kata)}</span>
+      ${ist.keterangan ? `<span class="istilah-chip-ket">${escapeHTML(ist.keterangan)}</span>` : ''}
+      <button type="button" class="btn-remove-alias" title="Hapus istilah">&times;</button>
+    `;
+    chip.querySelector('button').addEventListener('click', () => {
+      buku.istilah.splice(idx, 1);
+      simpan();
+      renderRakBuku();
+      renderDaftarIstilah(buku);
+    });
+    grid.appendChild(chip);
+  });
+}
+
 function bukaFormBuku(editMode = false) {
   modeEditBuku = editMode;
   $('form-buku-baru').reset();
@@ -415,6 +526,7 @@ function bukaDetailBuku(id) {
   expandedTokohId = null;
   $('btn-hapus-buku').textContent = 'Hapus Buku';
   setErrorTokoh('');
+  setErrorIstilah('');
 
   $('detail-judul').textContent = buku.judul;
   $('detail-status').textContent = buku.status;
@@ -430,6 +542,7 @@ function bukaDetailBuku(id) {
   $('input-warna-tokoh-custom').value = warnaTokoh;
   renderPaletTokoh(buku);
   renderDaftarTokoh(buku);
+  renderDaftarIstilah(buku);
   $('modal-detail-buku').classList.remove('hidden');
 }
 
@@ -441,7 +554,7 @@ function bukaHalamanDaftarBab() {
   $('modal-detail-buku').classList.add('hidden');
   $('bab-view-judul-buku').textContent = buku.judul;
   $('bab-total-info').textContent = `${buku.bab.length} Bab Tersimpan`;
-  $('bab-tokoh-info').textContent = `${buku.tokoh.length} Tokoh Aktif`;
+  $('bab-tokoh-info').textContent = `${buku.tokoh.length} Tokoh • ${buku.istilah.length} Istilah`;
 
   const list = $('daftar-bab');
   list.innerHTML = '';
@@ -511,7 +624,7 @@ function bukaFormBab(editMode = false) {
   $('input-judul-bab').focus();
 }
 
-// ================= VIEW 3: EDITOR OUTLINE & AUTOCOMPLETE =================
+// ================= VIEW 3: EDITOR OUTLINE, ITALIC & AUTOCOMPLETE =================
 function perbaruiProgresBab() {
   const bab = babAktif();
   if (!bab) return;
@@ -526,11 +639,6 @@ function perbaruiProgresBab() {
 
   $('btn-terapkan-bab').disabled = !tercapai;
   $('btn-terapkan-dari-preview').disabled = !tercapai;
-
-  const sisa = target - total;
-  $('pesan-target-kata').innerHTML = tercapai
-    ? `Target tercapai! Tombol <strong>Terapkan</strong> sudah aktif untuk menyatukan seluruh outline menjadi 1 bab utuh.`
-    : `Kurang <strong>${sisa.toLocaleString('id-ID')} kata</strong> lagi untuk mengaktifkan tombol <strong>Terapkan</strong>. Tekan <strong>Enter</strong> 1x untuk paragraf baru, dan <strong>Tab</strong> untuk auto-lengkap tokoh.`;
 }
 
 function bukaEditorOutlineBab() {
@@ -541,6 +649,30 @@ function bukaEditorOutlineBab() {
   perbaruiProgresBab();
   renderDaftarOutline();
   tampilkanView('view-editor-bab');
+}
+
+function toggleItalicAktif() {
+  if (!lastActiveEditor || !document.body.contains(lastActiveEditor.el)) return;
+  const buku = bukuAktif();
+  const bab = babAktif();
+  const { el, outIdx, pIdx } = lastActiveEditor;
+
+  el.focus();
+  document.execCommand('italic', false, null);
+
+  const markup = serializeEditor(el);
+  if (bab && bab.outlines[outIdx]) {
+    bab.outlines[outIdx].paragraf[pIdx] = markup;
+    simpan();
+  }
+}
+
+function sisipPemicuIstilah() {
+  if (!lastActiveEditor || !document.body.contains(lastActiveEditor.el)) return;
+  const { el, outIdx, pIdx } = lastActiveEditor;
+  el.focus();
+  document.execCommand('insertText', false, '/');
+  periksaAutocomplete(el, outIdx, pIdx);
 }
 
 function renderDaftarOutline() {
@@ -559,7 +691,6 @@ function renderDaftarOutline() {
 
     const card = document.createElement('div');
     card.className = `outline-card ${outline.expanded !== false ? 'open' : ''}`;
-
     const kataOutline = hitungKataOutline(outline);
 
     card.innerHTML = `
@@ -582,20 +713,17 @@ function renderDaftarOutline() {
       </div>
     `;
 
-    // Edit judul outline
     card.querySelector('.outline-title-input').addEventListener('input', (e) => {
       outline.judul = e.target.value;
       simpan();
     });
 
-    // Toggle accordion
     card.querySelector('.btn-toggle-outline').addEventListener('click', () => {
       outline.expanded = outline.expanded === false;
       card.classList.toggle('open', outline.expanded);
       simpan();
     });
 
-    // Rearrange outline atas/bawah
     card.querySelector('.btn-out-up').addEventListener('click', () => {
       if (outIdx === 0) return;
       [bab.outlines[outIdx - 1], bab.outlines[outIdx]] = [bab.outlines[outIdx], bab.outlines[outIdx - 1]];
@@ -610,7 +738,6 @@ function renderDaftarOutline() {
       renderDaftarOutline();
     });
 
-    // Hapus outline
     card.querySelector('.btn-del-out').addEventListener('click', () => {
       bab.outlines.splice(outIdx, 1);
       simpan();
@@ -618,9 +745,8 @@ function renderDaftarOutline() {
       renderDaftarOutline();
     });
 
-    // Render setiap blok paragraf di dalam outline
     const pListEl = card.querySelector('.paragraf-list');
-    outline.paragraf.forEach((teksParagraf, pIdx) => {
+    outline.paragraf.forEach((markupParagraf, pIdx) => {
       const pItem = document.createElement('div');
       pItem.className = 'paragraf-item';
       pItem.innerHTML = `
@@ -628,15 +754,18 @@ function renderDaftarOutline() {
           <button type="button" class="btn-p-move btn-p-up" title="Geser paragraf ke atas" ${pIdx === 0 ? 'disabled' : ''}>&#9650;</button>
           <button type="button" class="btn-p-move btn-p-down" title="Geser paragraf ke bawah" ${pIdx === outline.paragraf.length - 1 ? 'disabled' : ''}>&#9660;</button>
         </div>
-        <div class="paragraf-editor" contenteditable="true" data-placeholder="Tulis paragraf cerita di sini... (Enter = paragraf baru)"></div>
+        <div class="paragraf-editor" contenteditable="true" data-placeholder="Tulis paragraf di sini... (Enter = paragraf baru, Ctrl+I = miring, / = istilah)"></div>
       `;
 
       const editorEl = pItem.querySelector('.paragraf-editor');
-      const teksKapital = terapkanKapitalTokoh(teksParagraf, buku);
-      outline.paragraf[pIdx] = teksKapital;
-      editorEl.innerHTML = renderTeksBerwarnaHTML(teksKapital, buku);
+      const diformatAwal = formatTeksKonsisten(markupParagraf, buku);
+      outline.paragraf[pIdx] = diformatAwal;
+      editorEl.innerHTML = renderMarkupEditorHTML(diformatAwal, buku);
 
-      // Rearrange paragraf atas/bawah
+      editorEl.addEventListener('focus', () => {
+        lastActiveEditor = { el: editorEl, outIdx, pIdx };
+      });
+
       pItem.querySelector('.btn-p-up').addEventListener('click', () => {
         if (pIdx === 0) return;
         [outline.paragraf[pIdx - 1], outline.paragraf[pIdx]] = [outline.paragraf[pIdx], outline.paragraf[pIdx - 1]];
@@ -651,17 +780,24 @@ function renderDaftarOutline() {
         renderDaftarOutline();
       });
 
-      // Input handler: simpan teks, highlight saat spasi/tanda baca, dan cek autocomplete
       editorEl.addEventListener('input', (e) => {
-        const rawTeks = editorEl.innerText.replace(/\r?\n/g, '');
-        outline.paragraf[pIdx] = rawTeks;
+        lastActiveEditor = { el: editorEl, outIdx, pIdx };
+        let markup = serializeEditor(editorEl);
+        outline.paragraf[pIdx] = markup;
 
-        if (e.inputType === 'insertText' && e.data && /[\s.,!?;:"'()—\-]/.test(e.data)) {
+        const butuhRenderUlang =
+          (e.inputType === 'insertText' && e.data && /[\s.,!?;:"'()—\-*]/.test(e.data));
+
+        if (butuhRenderUlang) {
           const offset = getCaretOffset(editorEl);
-          const diformat = terapkanKapitalTokoh(rawTeks, buku);
-          outline.paragraf[pIdx] = diformat;
-          editorEl.innerHTML = renderTeksBerwarnaHTML(diformat, buku);
-          setCaretOffset(editorEl, offset);
+          const denganItalic = konversiBintangKeItalic(markup);
+          const diformat = formatTeksKonsisten(denganItalic, buku);
+          if (diformat !== markup) {
+            outline.paragraf[pIdx] = diformat;
+            editorEl.innerHTML = renderMarkupEditorHTML(diformat, buku);
+            const koreksiOffset = denganItalic !== markup ? Math.max(0, offset - 2) : offset;
+            setCaretOffset(editorEl, koreksiOffset);
+          }
         }
 
         simpan();
@@ -670,20 +806,26 @@ function renderDaftarOutline() {
         periksaAutocomplete(editorEl, outIdx, pIdx);
       });
 
-      // Blur: format & warnai seluruh nama tokoh yang tertinggal
       editorEl.addEventListener('blur', () => {
         setTimeout(() => {
-          const diformat = terapkanKapitalTokoh(editorEl.innerText.replace(/\r?\n/g, ''), buku);
+          const markup = serializeEditor(editorEl);
+          const diformat = formatTeksKonsisten(konversiBintangKeItalic(markup), buku);
           outline.paragraf[pIdx] = diformat;
-          editorEl.innerHTML = renderTeksBerwarnaHTML(diformat, buku);
+          editorEl.innerHTML = renderMarkupEditorHTML(diformat, buku);
           simpan();
           tutupAutocomplete();
-        }, 160);
+        }, 170);
       });
 
-      // Keydown: Tab untuk autocomplete, Enter 1x untuk paragraf baru, Backspace di awal untuk gabung
       editorEl.addEventListener('keydown', (e) => {
-        // Navigasi & pilih autocomplete
+        // Shortcut Ctrl+I untuk Italic
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+          e.preventDefault();
+          toggleItalicAktif();
+          return;
+        }
+
+        // Navigasi popup autocomplete (Tokoh maupun Istilah)
         if (!$('autocomplete-popup').classList.contains('hidden')) {
           if (e.key === 'Tab' || e.key === 'Enter') {
             e.preventDefault();
@@ -708,16 +850,24 @@ function renderDaftarOutline() {
           }
         }
 
-        // Enter 1x = Pisah menjadi paragraf baru di bawahnya
+        // Enter 1x = Paragraf baru
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
-          const teksSaatIni = editorEl.innerText.replace(/\r?\n/g, '');
+          const teksPolos = editorEl.innerText.replace(/\r?\n/g, '');
           const pos = getCaretOffset(editorEl);
-          const sebelum = terapkanKapitalTokoh(teksSaatIni.slice(0, pos).trimEnd(), buku);
-          const sesudah = teksSaatIni.slice(pos).trimStart();
+          const markupSekarang = serializeEditor(editorEl);
 
-          outline.paragraf[pIdx] = sebelum;
-          outline.paragraf.splice(pIdx + 1, 0, sesudah);
+          // Jika di ujung paragraf, langsung buat paragraf kosong baru dengan cepat
+          if (pos >= teksPolos.length) {
+            outline.paragraf[pIdx] = formatTeksKonsisten(markupSekarang, buku);
+            outline.paragraf.splice(pIdx + 1, 0, '');
+          } else {
+            const sebelum = formatTeksKonsisten(teksPolos.slice(0, pos).trimEnd(), buku);
+            const sesudah = teksPolos.slice(pos).trimStart();
+            outline.paragraf[pIdx] = sebelum;
+            outline.paragraf.splice(pIdx + 1, 0, sesudah);
+          }
+
           simpan();
           perbaruiProgresBab();
           renderDaftarOutline();
@@ -729,15 +879,16 @@ function renderDaftarOutline() {
           return;
         }
 
-        // Backspace di posisi 0 = Gabungkan ke paragraf sebelumnya
+        // Backspace di posisi 0 = Gabung dengan paragraf atasnya
         if (e.key === 'Backspace' && pIdx > 0 && getCaretOffset(editorEl) === 0) {
           e.preventDefault();
-          const teksAtas = outline.paragraf[pIdx - 1];
-          const teksBawah = editorEl.innerText.replace(/\r?\n/g, '');
-          const pemisah = teksAtas && teksBawah && !teksAtas.endsWith(' ') ? ' ' : '';
-          const posisiGabung = teksAtas.length + pemisah.length;
+          const markupAtas = outline.paragraf[pIdx - 1];
+          const teksPolosAtas = stripItalicTags(markupAtas);
+          const markupBawah = serializeEditor(editorEl);
+          const pemisah = teksPolosAtas && markupBawah && !teksPolosAtas.endsWith(' ') ? ' ' : '';
+          const posisiGabung = teksPolosAtas.length + pemisah.length;
 
-          outline.paragraf[pIdx - 1] = teksAtas + pemisah + teksBawah;
+          outline.paragraf[pIdx - 1] = markupAtas + pemisah + markupBawah;
           outline.paragraf.splice(pIdx, 1);
           simpan();
           perbaruiProgresBab();
@@ -753,7 +904,6 @@ function renderDaftarOutline() {
       pListEl.appendChild(pItem);
     });
 
-    // Tombol manual tambah paragraf di akhir outline
     card.querySelector('.btn-add-paragraf').addEventListener('click', () => {
       outline.paragraf.push('');
       simpan();
@@ -768,29 +918,62 @@ function renderDaftarOutline() {
   });
 }
 
-// Logika Autocomplete Tokoh & Alias
+// Logika Autocomplete Ganda:
+// 1. Jika diawali "/" -> Panggil daftar Istilah & Efek Bunyi
+// 2. Jika mengetik huruf biasa -> Panggil daftar Tokoh & Alias
 function periksaAutocomplete(editorEl, outIdx, pIdx) {
   const buku = bukuAktif();
-  const entitas = dapatkanEntitasTokoh(buku);
-  if (!entitas.length) return tutupAutocomplete();
+  if (!buku) return tutupAutocomplete();
 
   const teks = editorEl.innerText.replace(/\r?\n/g, '');
   const pos = getCaretOffset(editorEl);
   const teksSebelum = teks.slice(0, pos);
 
-  // Ambil 1 atau 2 kata terakhir di depan kursor (tanpa spasi di ujung)
-  const matchKata = teksSebelum.match(/(?:^|[^a-zA-Z0-9_])([a-zA-Z0-9_]+(?:\s[a-zA-Z0-9_]+)?)$/);
+  // Mode 1: Pemicu "/" untuk Istilah & Efek Bunyi
+  const matchIstilah = teksSebelum.match(/(?:^|\s)(\/[a-zA-Z0-9_-]*)$/);
+  if (matchIstilah) {
+    const daftarIstilah = buku.istilah || [];
+    if (!daftarIstilah.length) return tutupAutocomplete();
+
+    const fullTrigger = matchIstilah[1]; // contoh: "/" atau "/du"
+    const query = fullTrigger.slice(1).toLowerCase();
+
+    const cocokIstilah = daftarIstilah
+      .filter(
+        (ist) =>
+          !query ||
+          ist.kata.toLowerCase().includes(query) ||
+          (ist.keterangan && ist.keterangan.toLowerCase().includes(query))
+      )
+      .map((ist) => ({
+        tipe: 'istilah',
+        teks: ist.kata,
+        peran: ist.keterangan || 'Istilah'
+      }));
+
+    if (cocokIstilah.length === 0) return tutupAutocomplete();
+
+    acMatches = cocokIstilah;
+    acIndex = 0;
+    acTargetInfo = { el: editorEl, outIdx, pIdx, prefixLen: fullTrigger.length, mode: 'istilah' };
+    renderPopupAutocomplete();
+    return;
+  }
+
+  // Mode 2: Huruf awal untuk Tokoh & Alias
+  const entitas = dapatkanEntitasTokoh(buku);
+  if (!entitas.length) return tutupAutocomplete();
+
+  const matchKata = teksSebelum.match(/(?:^|[^a-zA-Z0-9_/])([a-zA-Z0-9_]+(?:\s[a-zA-Z0-9_]+)?)$/);
   if (!matchKata) return tutupAutocomplete();
 
   const frasaKetik = matchKata[1];
   const frasaLower = frasaKetik.toLowerCase();
 
-  // Cari tokoh/alias yang berawalan sama (dan belum sama persis)
   let cocok = entitas.filter(
     (e) => e.teks.toLowerCase().startsWith(frasaLower) && e.teks.toLowerCase() !== frasaLower
   );
 
-  // Jika 2 kata tidak cocok, coba cek 1 kata terakhir saja
   let panjangPrefix = frasaKetik.length;
   if (cocok.length === 0 && frasaKetik.includes(' ')) {
     const kataTerakhir = frasaKetik.split(' ').pop();
@@ -803,9 +986,9 @@ function periksaAutocomplete(editorEl, outIdx, pIdx) {
 
   if (cocok.length === 0) return tutupAutocomplete();
 
-  acMatches = cocok;
+  acMatches = cocok.map((c) => ({ tipe: 'tokoh', ...c }));
   acIndex = 0;
-  acTargetInfo = { el: editorEl, outIdx, pIdx, prefixLen: panjangPrefix };
+  acTargetInfo = { el: editorEl, outIdx, pIdx, prefixLen: panjangPrefix, mode: 'tokoh' };
   renderPopupAutocomplete();
 }
 
@@ -814,21 +997,38 @@ function renderPopupAutocomplete() {
   if (!acTargetInfo || acMatches.length === 0) return tutupAutocomplete();
 
   const rect = acTargetInfo.el.getBoundingClientRect();
-  popup.style.left = `${Math.min(rect.left, window.innerWidth - 240)}px`;
-  popup.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 180)}px`;
+  popup.style.left = `${Math.min(rect.left, window.innerWidth - 260)}px`;
+  popup.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 210)}px`;
 
-  popup.innerHTML = `<div class="autocomplete-hint">Tekan <strong>Tab</strong> atau tap untuk pilih</div>`;
+  const judulHint =
+    acTargetInfo.mode === 'istilah'
+      ? 'Daftar Istilah &bull; Tekan <strong>Tab</strong> / tap'
+      : 'Tokoh &amp; Alias &bull; Tekan <strong>Tab</strong> / tap';
+
+  popup.innerHTML = `<div class="autocomplete-hint">${judulHint}</div>`;
 
   acMatches.forEach((item, idx) => {
     const row = document.createElement('div');
     row.className = `autocomplete-item ${idx === acIndex ? 'selected' : ''}`;
-    row.innerHTML = `
-      <div class="autocomplete-item-left">
-        <span class="tokoh-dot" style="background-color: ${item.warna};"></span>
-        <span style="color: ${item.warna};">${escapeHTML(item.teks)}</span>
-      </div>
-      <span class="autocomplete-role">${escapeHTML(item.peran)}</span>
-    `;
+
+    if (item.tipe === 'istilah') {
+      row.innerHTML = `
+        <div class="autocomplete-item-left">
+          <span class="istilah-badge-icon">/</span>
+          <span style="color: #fbbf24;">${escapeHTML(item.teks)}</span>
+        </div>
+        <span class="autocomplete-role">${escapeHTML(item.peran)}</span>
+      `;
+    } else {
+      row.innerHTML = `
+        <div class="autocomplete-item-left">
+          <span class="tokoh-dot" style="background-color: ${item.warna};"></span>
+          <span style="color: ${item.warna};">${escapeHTML(item.teks)}</span>
+        </div>
+        <span class="autocomplete-role">${escapeHTML(item.peran)}</span>
+      `;
+    }
+
     row.addEventListener('mousedown', (e) => {
       e.preventDefault();
       terapkanPilihanAutocomplete(idx);
@@ -846,16 +1046,22 @@ function terapkanPilihanAutocomplete(idx) {
   const { el, outIdx, pIdx, prefixLen } = acTargetInfo;
   const pilihan = acMatches[idx].teks;
 
-  const teks = el.innerText.replace(/\r?\n/g, '');
-  const pos = getCaretOffset(el);
-  const awalPrefix = pos - prefixLen;
+  el.focus();
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    // Hapus prefix ("/du" atau "ar") tepat di belakang kursor lalu sisipkan teks terpilih
+    for (let i = 0; i < prefixLen; i++) {
+      sel.modify('extend', 'backward', 'character');
+    }
+    document.execCommand('insertText', false, pilihan + ' ');
+  }
 
-  const teksBaru = teks.slice(0, awalPrefix) + pilihan + ' ' + teks.slice(pos);
-  const diformat = terapkanKapitalTokoh(teksBaru, buku);
-
+  const offset = getCaretOffset(el);
+  const markup = serializeEditor(el);
+  const diformat = formatTeksKonsisten(markup, buku);
   bab.outlines[outIdx].paragraf[pIdx] = diformat;
-  el.innerHTML = renderTeksBerwarnaHTML(diformat, buku);
-  setCaretOffset(el, awalPrefix + pilihan.length + 1);
+  el.innerHTML = renderMarkupEditorHTML(diformat, buku);
+  setCaretOffset(el, offset);
 
   simpan();
   $(`out-words-${outIdx}`).textContent = `${hitungKataOutline(bab.outlines[outIdx])} kata`;
@@ -906,7 +1112,7 @@ function renderKontenPreview(filterVal) {
   outlineTerpilih.forEach((out) => {
     (out.paragraf || []).forEach((p) => {
       const bersih = p.trim();
-      if (bersih) semuaParagraf.push(terapkanKapitalTokoh(bersih, buku));
+      if (bersih) semuaParagraf.push(formatTeksKonsisten(bersih, buku));
     });
   });
 
@@ -918,9 +1124,9 @@ function renderKontenPreview(filterVal) {
     return;
   }
 
-  semuaParagraf.forEach((pTeks) => {
+  semuaParagraf.forEach((pMarkup) => {
     const pEl = document.createElement('p');
-    pEl.innerHTML = renderTeksBerwarnaHTML(pTeks, buku);
+    pEl.innerHTML = renderMarkupEditorHTML(pMarkup, buku);
     paper.appendChild(pEl);
   });
 }
@@ -937,7 +1143,7 @@ function terapkanKeBabUtuh() {
   const semuaParagraf = [];
   bab.outlines.forEach((out) => {
     (out.paragraf || []).forEach((p) => {
-      const bersih = terapkanKapitalTokoh(p.trim(), buku);
+      const bersih = formatTeksKonsisten(p.trim(), buku);
       if (bersih) semuaParagraf.push(bersih);
     });
   });
@@ -960,7 +1166,7 @@ function bukaHasilFinalBab() {
   const paragrafList = (bab.teksFinal || '').split(/\n\n+/).filter((p) => p.trim());
   paragrafList.forEach((p) => {
     const pEl = document.createElement('p');
-    pEl.textContent = p.trim();
+    pEl.innerHTML = renderMarkupFinalHTML(p.trim());
     kontenEl.appendChild(pEl);
   });
 
@@ -976,9 +1182,7 @@ document.addEventListener('click', (e) => {
   if (t.closest('#btn-tambah-buku')) bukaFormBuku(false);
   if (t.closest('#btn-edit-buku')) bukaFormBuku(true);
   if (t.closest('#btn-tutup-buat') || t.closest('#btn-batal-buat')) $('modal-buat-buku').classList.add('hidden');
-  if (t.closest('#btn-tutup-detail')) {
-    $('modal-detail-buku').classList.add('hidden');
-  }
+  if (t.closest('#btn-tutup-detail')) $('modal-detail-buku').classList.add('hidden');
 
   if (t.classList.contains('warna-opsi')) {
     document.querySelectorAll('.warna-opsi').forEach((b) => b.classList.remove('active'));
@@ -1016,6 +1220,10 @@ document.addEventListener('click', (e) => {
   if (t.closest('#btn-edit-meta-bab')) bukaFormBab(true);
   if (t.closest('#btn-tutup-bab-form') || t.closest('#btn-batal-bab-form')) $('modal-bab-form').classList.add('hidden');
 
+  // Toolbar Format Editor
+  if (t.closest('#btn-format-italic')) toggleItalicAktif();
+  if (t.closest('#btn-sisip-istilah')) sisipPemicuIstilah();
+
   // Navigasi Editor Outline & Preview
   if (t.closest('#btn-kembali-daftar-bab') || t.closest('#btn-final-ke-daftar-bab')) bukaHalamanDaftarBab();
   if (t.closest('#btn-buka-preview')) bukaPreviewBab();
@@ -1032,15 +1240,34 @@ document.addEventListener('click', (e) => {
   }
 
   if (t.closest('#btn-salin-novel') && babAktif()) {
-    navigator.clipboard.writeText(babAktif().teksFinal || '').then(() => {
+    const markupFinal = babAktif().teksFinal || '';
+    const teksPolos = stripItalicTags(markupFinal);
+    const htmlRich = markupFinal
+      .split(/\n\n+/)
+      .map((p) => `<p>${renderMarkupFinalHTML(p)}</p>`)
+      .join('');
+
+    const tampilkanToast = () => {
       $('notifikasi-salin').classList.remove('hidden');
       setTimeout(() => $('notifikasi-salin').classList.add('hidden'), 3000);
-    });
+    };
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      const item = new ClipboardItem({
+        'text/plain': new Blob([teksPolos], { type: 'text/plain' }),
+        'text/html': new Blob([htmlRich], { type: 'text/html' })
+      });
+      navigator.clipboard.write([item]).then(tampilkanToast).catch(() => {
+        navigator.clipboard.writeText(teksPolos).then(tampilkanToast);
+      });
+    } else {
+      navigator.clipboard.writeText(teksPolos).then(tampilkanToast);
+    }
   }
 
   if (t.closest('#btn-unduh-txt') && babAktif()) {
     const bab = babAktif();
-    const isi = `${bab.judul}\n\n${bab.teksFinal}`;
+    const isi = `${bab.judul}\n\n${stripItalicTags(bab.teksFinal)}`;
     const blob = new Blob([isi], { type: 'text/plain;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -1052,7 +1279,7 @@ document.addEventListener('click', (e) => {
     const bab = babAktif();
     const paragrafHTML = (bab.teksFinal || '')
       .split(/\n\n+/)
-      .map((p) => `<p style="text-indent: 2em; margin-bottom: 12pt; line-height: 1.6; color: #000000; font-family: 'Times New Roman', serif; font-size: 12pt;">${escapeHTML(p)}</p>`)
+      .map((p) => `<p style="text-indent: 2em; margin-bottom: 12pt; line-height: 1.6; color: #000000; font-family: 'Times New Roman', serif; font-size: 12pt;">${renderMarkupFinalHTML(p)}</p>`)
       .join('');
 
     const docHTML = `
@@ -1124,6 +1351,7 @@ $('form-buku-baru')?.addEventListener('submit', (e) => {
       id: Date.now().toString(),
       ...dataForm,
       tokoh: [],
+      istilah: [],
       bab: [],
       dibuatPada: new Date().toISOString()
     });
@@ -1172,6 +1400,33 @@ $('form-tambah-tokoh')?.addEventListener('submit', (e) => {
   $('input-warna-tokoh-custom').value = warnaTokoh;
   renderPaletTokoh(buku);
   renderDaftarTokoh(buku);
+});
+
+// Submit Istilah & Efek Bunyi
+$('form-tambah-istilah')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const buku = bukuAktif();
+  if (!buku) return;
+
+  const kata = $('input-kata-istilah').value.trim().replace(/\s+/g, ' ');
+  const keterangan = $('input-ket-istilah').value.trim();
+  if (!kata) return;
+
+  const sudahAda = buku.istilah.some((ist) => ist.kata.toLowerCase() === kata.toLowerCase());
+  if (sudahAda) return setErrorIstilah(`Istilah "${kata}" sudah terdaftar di buku ini.`);
+
+  setErrorIstilah('');
+  buku.istilah.push({
+    id: Date.now().toString(),
+    kata,
+    keterangan
+  });
+
+  $('input-kata-istilah').value = '';
+  $('input-ket-istilah').value = '';
+  simpan();
+  renderRakBuku();
+  renderDaftarIstilah(buku);
 });
 
 // Submit Buat / Edit Bab

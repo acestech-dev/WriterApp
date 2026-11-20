@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WriterApp - Studio Penulisan Novel</title>
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -36,7 +36,7 @@
         <span id="bab-view-judul-buku" class="topbar-title">Judul Buku</span>
       </div>
       <div class="topbar-kanan">
-        <button id="btn-kelola-tokoh-shortcut" class="btn-secondary">Tokoh &amp; Info</button>
+        <button id="btn-kelola-tokoh-shortcut" class="btn-secondary">Tokoh, Istilah &amp; Info</button>
         <button id="btn-tambah-bab" class="btn-primary">+ Bab Baru</button>
       </div>
     </header>
@@ -44,7 +44,7 @@
     <main class="container">
       <div class="bab-summary-bar">
         <span id="bab-total-info">0 Bab Tersimpan</span>
-        <span id="bab-tokoh-info">0 Tokoh Terdaftar</span>
+        <span id="bab-tokoh-info">0 Tokoh &bull; 0 Istilah</span>
       </div>
 
       <div id="bab-empty-state" class="empty-state">
@@ -76,9 +76,13 @@
     </header>
 
     <main class="container editor-container">
-      <!-- Info Kunci Target Kata & Shortcut -->
-      <div class="editor-helper-banner">
-        <span id="pesan-target-kata">Tambahkan poin outline lalu mulai menulis. Tekan <strong>Enter</strong> 1x untuk paragraf baru, dan <strong>Tab</strong> untuk auto-lengkap nama tokoh.</span>
+      <!-- Toolbar Format & Shortcut Editor -->
+      <div class="editor-toolbar-bar">
+        <div class="editor-format-tools">
+          <button type="button" id="btn-format-italic" class="btn-tool-format" title="Tulisan Miring / Dialog Dalam Hati (Ctrl+I)"><em>I</em> Italic</button>
+          <button type="button" id="btn-sisip-istilah" class="btn-tool-format" title="Sisipkan Istilah / Efek Bunyi">/ Istilah</button>
+        </div>
+        <span id="pesan-target-kata" class="toolbar-hint"><strong>Enter</strong> 1x = paragraf baru &bull; <strong>Tab</strong> = pilih tokoh &bull; <strong>/</strong> = panggil istilah</span>
       </div>
 
       <!-- Form Tambah Outline -->
@@ -94,7 +98,7 @@
       <div id="daftar-outline" class="outline-accordion-list"></div>
     </main>
 
-    <!-- Popup Autocomplete Tokoh & Alias -->
+    <!-- Popup Autocomplete Tokoh & Istilah -->
     <div id="autocomplete-popup" class="autocomplete-popup hidden"></div>
   </section>
 
@@ -116,7 +120,7 @@
     <main class="container">
       <div class="preview-info-bar">
         <span id="preview-word-summary">Total: 0 Kata</span>
-        <span>Judul outline disembunyikan &bull; Indentasi otomatis aktif</span>
+        <span>Judul outline disembunyikan &bull; Indentasi &amp; italic otomatis aktif</span>
       </div>
 
       <article id="preview-paper" class="manuscript-paper preview-mode"></article>
@@ -136,7 +140,6 @@
     </header>
 
     <main class="container">
-      <!-- Bar Ekspor & Salin -->
       <div class="final-toolbar">
         <div class="final-export-buttons">
           <button id="btn-salin-novel" class="btn-primary">Salin untuk Platform Novel</button>
@@ -219,7 +222,7 @@
     </div>
   </div>
 
-  <!-- ================= MODAL DETAIL BUKU & TOKOH ================= -->
+  <!-- ================= MODAL DETAIL BUKU, TOKOH & ISTILAH ================= -->
   <div id="modal-detail-buku" class="modal-overlay hidden">
     <div class="modal-box modal-detail-box">
       <div class="modal-header">
@@ -245,6 +248,7 @@
           <p id="detail-blurb">Belum ada sinopsis.</p>
         </div>
 
+        <!-- Bagian Kelola Tokoh & Alias -->
         <div class="detail-tokoh-section">
           <div class="tokoh-section-header">
             <h4>Daftar Tokoh &amp; Alias</h4>
@@ -272,6 +276,25 @@
           </form>
 
           <div id="daftar-tokoh" class="tokoh-accordion-list"></div>
+        </div>
+
+        <!-- Bagian Kelola Istilah & Efek Bunyi -->
+        <div class="detail-tokoh-section">
+          <div class="tokoh-section-header">
+            <h4>Daftar Istilah &amp; Efek Bunyi <span class="hint-trigger">(Ketik <code>/</code> di editor)</span></h4>
+            <span id="jumlah-istilah" class="badge-count">0 Istilah</span>
+          </div>
+
+          <form id="form-tambah-istilah" class="tokoh-form-card">
+            <div class="istilah-input-grid">
+              <input type="text" id="input-kata-istilah" placeholder="Istilah (misal: Duuaarrr, Aarrkkhh)..." autocomplete="off" required>
+              <input type="text" id="input-ket-istilah" placeholder="Keterangan opsional (misal: Ledakan)..." autocomplete="off">
+              <button type="submit" class="btn-primary">+ Istilah</button>
+            </div>
+            <p id="error-istilah" class="inline-error hidden"></p>
+          </form>
+
+          <div id="daftar-istilah" class="istilah-chip-grid"></div>
         </div>
 
         <div class="modal-footer detail-actions">
@@ -309,6 +332,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
