@@ -1,4 +1,9 @@
-const STORAGE_KEY = 'writerapp_books_v1';
+const DB_NAME = 'WriterAppDB';
+const DB_VERSION = 1;
+const STORE_BOOKS = 'books';
+const LEGACY_STORAGE_KEY = 'writerapp_books_v1';
+const MIGRATION_FLAG_KEY = 'writerapp_idb_migrated_v1';
+
 const PALET_TOKOH = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e', '#10b981', '#14b8a6',
   '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899'
@@ -6,29 +11,9 @@ const PALET_TOKOH = [
 
 const $ = (id) => document.getElementById(id);
 
-function muatBuku() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!Array.isArray(raw)) return [];
-    return raw.map((b) => ({
-      ...b,
-      tokoh: Array.isArray(b.tokoh) ? b.tokoh : [],
-      istilah: Array.isArray(b.istilah) ? b.istilah : [],
-      bab: Array.isArray(b.bab)
-        ? b.bab.map((bab) => ({
-            ...bab,
-            status: bab.status || 'Draft',
-            outlines: Array.isArray(bab.outlines) ? bab.outlines : [],
-            teksFinal: bab.teksFinal || ''
-          }))
-        : []
-    }));
-  } catch {
-    return [];
-  }
-}
-
-let daftarBuku = muatBuku();
+let dbInstance = null;
+let menggunakanFallbackStorage = false;
+let daftarBuku = [];
 let warnaSampul = '#1e3a5f';
 let coverBase64 = '';
 let idBukuAktif = null;
@@ -39,16 +24,282 @@ let konfirmasiHapus = false;
 let warnaTokoh = '#ef4444';
 let expandedTokohId = null;
 
-// State Autocomplete & Fokus Editor Terakhir
+// State Backup & Autocomplete
+let pendingImportBooks = [];
 let acMatches = [];
 let acIndex = 0;
-let acTargetInfo = null; // { el, outIdx, pIdx, prefixLen, mode }
-let lastActiveEditor = null; // { el, outIdx, pIdx }
+let acTargetInfo = null;
+let lastActiveEditor = null;
 
-const simpan = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(daftarBuku));
 const bukuAktif = () => daftarBuku.find((b) => b.id === idBukuAktif);
 const babAktif = () => bukuAktif()?.bab.find((bab) => bab.id === idBabAktif);
 
+// ================= LAPISAN PENYIMPANAN INDEXEDDB =================
+function normalisasiBuku(b, idx = 0) {
+  return {
+    id: String(b.id || Date.now() + idx),
+    judul: String(b.judul || 'Tanpa Judul'),
+    status: b.status || 'Draft',
+    targetKata: parseInt(b.targetKata, 10) || 1000,
+    warna: b.warna || '#1e3a5f',
+    cover: b.cover || '',
+    blurb: b.blurb || '',
+    urutan: typeof b.urutan === 'number' ? b.urutan : idx,
+    dibuatPada: b.dibuatPada || new Date().toISOString(),
+    tokoh: Array.isArray(b.tokoh)
+      ? b.tokoh.map((t, tIdx) => ({
+          id: String(t.id || `${Date.now()}_${tIdx}`),
+          nama: String(t.nama || ''),
+          warna: t.warna || '#ef4444',
+          alias: Array.isArray(t.alias) ? t.alias.map(String) : []
+        }))
+      : [],
+    istilah: Array.isArray(b.istilah)
+      ? b.istilah.map((ist, iIdx) => ({
+          id: String(ist.id || `${Date.now()}_${iIdx}`),
+          kata: String(ist.kata || ''),
+          keterangan: String(ist.keterangan || '')
+        }))
+      : [],
+    bab: Array.isArray(b.bab)
+      ? b.bab.map((bab, bIdx) => ({
+          id: String(bab.id || `${Date.now()}_${bIdx}`),
+          judul: String(bab.judul || `Bab ${bIdx + 1}`),
+          targetKata: parseInt(bab.targetKata, 10) || 1000,
+          status: bab.status || 'Draft',
+          outlines: Array.isArray(bab.outlines)
+            ? bab.outlines.map((out, oIdx) => ({
+                id: String(out.id || `${Date.now()}_${oIdx}`),
+                judul: String(out.judul || ''),
+                expanded: out.expanded !== false,
+                paragraf: Array.isArray(out.paragraf) && out.paragraf.length ? out.paragraf.map(String) : ['']
+              }))
+            : [],
+          teksFinal: String(bab.teksFinal || '')
+        }))
+      : []
+  };
+}
+
+function bukaIndexedDB() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      return reject(new Error('IndexedDB tidak didukung browser ini.'));
+    }
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_BOOKS)) {
+        db.createObjectStore(STORE_BOOKS, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function bacaSemuaDariIDB(db) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_BOOKS, 'readonly');
+    const store = tx.objectStore(STORE_BOOKS);
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const hasil = (req.result || [])
+        .map((b, i) => normalisasiBuku(b, i))
+        .sort((a, b) => a.urutan - b.urutan);
+      resolve(hasil);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function simpan() {
+  daftarBuku.forEach((b, idx) => {
+    b.urutan = idx;
+  });
+  perbaruiStatusStorage();
+
+  if (dbInstance && !menggunakanFallbackStorage) {
+    return new Promise((resolve) => {
+      try {
+        const tx = dbInstance.transaction(STORE_BOOKS, 'readwrite');
+        const store = tx.objectStore(STORE_BOOKS);
+        store.clear();
+        daftarBuku.forEach((buku) => {
+          store.put(buku);
+        });
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => {
+          localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(daftarBuku));
+          resolve(false);
+        };
+      } catch {
+        localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(daftarBuku));
+        resolve(false);
+      }
+    });
+  } else {
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify(daftarBuku));
+    return Promise.resolve(true);
+  }
+}
+
+function perbaruiStatusStorage() {
+  const el = $('storage-status-text');
+  if (!el) return;
+  const bytes = new Blob([JSON.stringify(daftarBuku)]).size;
+  const ukuran =
+    bytes < 1024
+      ? `${bytes} B`
+      : bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+
+  el.textContent = menggunakanFallbackStorage
+    ? `Penyimpanan Lokal (${ukuran})`
+    : `IndexedDB Aktif (${ukuran})`;
+}
+
+async function inisialisasiAplikasi() {
+  try {
+    dbInstance = await bukaIndexedDB();
+    let booksIDB = await bacaSemuaDariIDB(dbInstance);
+
+    // Migrasi otomatis data lama dari localStorage ke IndexedDB jika ada
+    const rawLegacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (booksIDB.length === 0 && rawLegacy) {
+      try {
+        const parsed = JSON.parse(rawLegacy);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          daftarBuku = parsed.map((b, i) => normalisasiBuku(b, i));
+          await simpan();
+          localStorage.removeItem(LEGACY_STORAGE_KEY);
+          localStorage.setItem(MIGRATION_FLAG_KEY, 'true');
+          tampilkanToastRak(`${daftarBuku.length} buku berhasil dimigrasikan otomatis ke IndexedDB!`);
+        } else {
+          daftarBuku = [];
+        }
+      } catch {
+        daftarBuku = [];
+      }
+    } else {
+      daftarBuku = booksIDB;
+    }
+  } catch {
+    menggunakanFallbackStorage = true;
+    try {
+      const raw = JSON.parse(localStorage.getItem(LEGACY_STORAGE_KEY));
+      daftarBuku = Array.isArray(raw) ? raw.map((b, i) => normalisasiBuku(b, i)) : [];
+    } catch {
+      daftarBuku = [];
+    }
+  }
+
+  perbaruiStatusStorage();
+  renderRakBuku();
+}
+
+function tampilkanToastRak(pesan) {
+  const el = $('notifikasi-rak');
+  if (!el) return;
+  el.textContent = pesan;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 3500);
+}
+
+// ================= BACKUP & RESTORE JSON =================
+function exportBackupJSON() {
+  if (daftarBuku.length === 0) {
+    tampilkanToastRak('Rak buku masih kosong, belum ada data untuk di-backup.');
+    return;
+  }
+
+  const tanggal = new Date().toISOString().slice(0, 10);
+  const payload = {
+    app: 'WriterApp',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    totalBuku: daftarBuku.length,
+    books: daftarBuku
+  };
+
+  const jsonStr = JSON.stringify(payload, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `WriterApp_Backup_${tanggal}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+
+  tampilkanToastRak(`Backup ${daftarBuku.length} buku berhasil diunduh (.json).`);
+}
+
+function prosesFileImportJSON(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const rawBooks = Array.isArray(data) ? data : Array.isArray(data?.books) ? data.books : null;
+
+      if (!rawBooks || rawBooks.length === 0) {
+        tampilkanToastRak('File JSON tidak berisi data buku WriterApp yang valid.');
+        return;
+      }
+
+      pendingImportBooks = rawBooks.map((b, i) => normalisasiBuku(b, i));
+
+      const totalBab = pendingImportBooks.reduce((acc, b) => acc + b.bab.length, 0);
+      const totalTokoh = pendingImportBooks.reduce((acc, b) => acc + b.tokoh.length, 0);
+      const tglExport = data?.exportedAt
+        ? new Date(data.exportedAt).toLocaleString('id-ID')
+        : 'Tidak tercatat';
+
+      $('import-summary-info').innerHTML = `
+        <strong>File:</strong> ${escapeHTML(file.name)}<br>
+        <strong>Waktu Backup:</strong> ${escapeHTML(tglExport)}<br>
+        <strong>Isi Data:</strong> ${pendingImportBooks.length} Buku &bull; ${totalBab} Bab &bull; ${totalTokoh} Tokoh
+      `;
+      $('modal-import-backup').classList.remove('hidden');
+    } catch {
+      tampilkanToastRak('Gagal membaca file. Pastikan file berformat JSON yang benar.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function terapkanImportBackup(mode) {
+  if (!pendingImportBooks.length) return;
+
+  if (mode === 'replace') {
+    daftarBuku = pendingImportBooks.map((b, i) => normalisasiBuku(b, i));
+  } else {
+    // Mode Merge: Perbarui ID yang cocok, tambahkan buku baru di urutan atas
+    const mapSaatIni = new Map(daftarBuku.map((b) => [b.id, b]));
+    const bukuBaru = [];
+
+    pendingImportBooks.forEach((b) => {
+      if (mapSaatIni.has(b.id)) {
+        mapSaatIni.set(b.id, b);
+      } else {
+        bukuBaru.push(b);
+      }
+    });
+
+    daftarBuku = [...bukuBaru, ...Array.from(mapSaatIni.values())];
+  }
+
+  const jumlahDipulihkan = pendingImportBooks.length;
+  pendingImportBooks = [];
+  $('modal-import-backup').classList.add('hidden');
+  $('input-import-json').value = '';
+
+  await simpan();
+  renderRakBuku();
+  tampilkanToastRak(`Berhasil memulihkan ${jumlahDipulihkan} buku ke IndexedDB!`);
+}
+
+// ================= HELPER TEKS, ITALIC & WARNA TOKOH =================
 function escapeHTML(str) {
   const div = document.createElement('div');
   div.textContent = str;
@@ -88,8 +339,6 @@ function tampilkanView(viewId) {
   tutupAutocomplete();
 }
 
-// ================= SERIALISASI ITALIC & WARNA TOKOH =================
-// Ubah DOM contenteditable menjadi string teks dengan penanda <i>...</i>
 function serializeEditor(el) {
   let out = '';
   el.childNodes.forEach((node) => {
@@ -111,7 +360,6 @@ function serializeEditor(el) {
   return out;
 }
 
-// Konversi *teks miring* menjadi <i>teks miring</i> jika diketik manual
 function konversiBintangKeItalic(markup) {
   return markup.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
 }
@@ -161,7 +409,6 @@ function setErrorIstilah(pesan = '') {
   el.classList.toggle('hidden', !pesan);
 }
 
-// Kumpulkan tokoh & alias untuk pewarnaan dan kapital otomatis
 function dapatkanEntitasTokoh(buku) {
   if (!buku || !Array.isArray(buku.tokoh)) return [];
   const items = [];
@@ -174,7 +421,6 @@ function dapatkanEntitasTokoh(buku) {
   return items.sort((a, b) => b.teks.length - a.teks.length);
 }
 
-// Terapkan kapitalisasi tokoh & konsistensi ejaan istilah di luar tag <i>
 function formatTeksKonsisten(markup, buku) {
   if (!markup) return '';
   const entitasTokoh = dapatkanEntitasTokoh(buku);
@@ -201,7 +447,6 @@ function formatTeksKonsisten(markup, buku) {
     .join('');
 }
 
-// Render teks biasa menjadi HTML dengan warna tokoh
 function renderSegmenBerwarna(teks, entitas) {
   if (!entitas.length || !teks) return escapeHTML(teks || '');
 
@@ -230,7 +475,6 @@ function renderSegmenBerwarna(teks, entitas) {
   return hasil;
 }
 
-// Render markup lengkap (mendukung <i>...</i> + warna tokoh di dalam & luar italic)
 function renderMarkupEditorHTML(markup, buku) {
   if (!markup) return '';
   const entitas = dapatkanEntitasTokoh(buku);
@@ -246,7 +490,6 @@ function renderMarkupEditorHTML(markup, buku) {
     .join('');
 }
 
-// Render paragraf final (tanpa warna tokoh, tetap mempertahankan italic <em>)
 function renderMarkupFinalHTML(markup) {
   if (!markup) return '';
   return markup
@@ -261,7 +504,6 @@ function renderMarkupFinalHTML(markup) {
     .join('');
 }
 
-// Simpan & Pulihkan Posisi Kursor (Caret)
 function getCaretOffset(el) {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return 0;
@@ -653,7 +895,6 @@ function bukaEditorOutlineBab() {
 
 function toggleItalicAktif() {
   if (!lastActiveEditor || !document.body.contains(lastActiveEditor.el)) return;
-  const buku = bukuAktif();
   const bab = babAktif();
   const { el, outIdx, pIdx } = lastActiveEditor;
 
@@ -674,6 +915,11 @@ function sisipPemicuIstilah() {
   document.execCommand('insertText', false, '/');
   periksaAutocomplete(el, outIdx, pIdx);
 }
+
+// Jaga seleksi teks tidak lepas saat tombol toolbar diklik/disentuh di Android
+['btn-format-italic', 'btn-sisip-istilah'].forEach((btnId) => {
+  $(btnId)?.addEventListener('mousedown', (e) => e.preventDefault());
+});
 
 function renderDaftarOutline() {
   const buku = bukuAktif();
@@ -786,7 +1032,7 @@ function renderDaftarOutline() {
         outline.paragraf[pIdx] = markup;
 
         const butuhRenderUlang =
-          (e.inputType === 'insertText' && e.data && /[\s.,!?;:"'()—\-*]/.test(e.data));
+          e.inputType === 'insertText' && e.data && /[\s.,!?;:"'()—\-*]/.test(e.data);
 
         if (butuhRenderUlang) {
           const offset = getCaretOffset(editorEl);
@@ -818,14 +1064,12 @@ function renderDaftarOutline() {
       });
 
       editorEl.addEventListener('keydown', (e) => {
-        // Shortcut Ctrl+I untuk Italic
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
           e.preventDefault();
           toggleItalicAktif();
           return;
         }
 
-        // Navigasi popup autocomplete (Tokoh maupun Istilah)
         if (!$('autocomplete-popup').classList.contains('hidden')) {
           if (e.key === 'Tab' || e.key === 'Enter') {
             e.preventDefault();
@@ -850,14 +1094,12 @@ function renderDaftarOutline() {
           }
         }
 
-        // Enter 1x = Paragraf baru
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           const teksPolos = editorEl.innerText.replace(/\r?\n/g, '');
           const pos = getCaretOffset(editorEl);
           const markupSekarang = serializeEditor(editorEl);
 
-          // Jika di ujung paragraf, langsung buat paragraf kosong baru dengan cepat
           if (pos >= teksPolos.length) {
             outline.paragraf[pIdx] = formatTeksKonsisten(markupSekarang, buku);
             outline.paragraf.splice(pIdx + 1, 0, '');
@@ -879,7 +1121,6 @@ function renderDaftarOutline() {
           return;
         }
 
-        // Backspace di posisi 0 = Gabung dengan paragraf atasnya
         if (e.key === 'Backspace' && pIdx > 0 && getCaretOffset(editorEl) === 0) {
           e.preventDefault();
           const markupAtas = outline.paragraf[pIdx - 1];
@@ -918,9 +1159,6 @@ function renderDaftarOutline() {
   });
 }
 
-// Logika Autocomplete Ganda:
-// 1. Jika diawali "/" -> Panggil daftar Istilah & Efek Bunyi
-// 2. Jika mengetik huruf biasa -> Panggil daftar Tokoh & Alias
 function periksaAutocomplete(editorEl, outIdx, pIdx) {
   const buku = bukuAktif();
   if (!buku) return tutupAutocomplete();
@@ -935,7 +1173,7 @@ function periksaAutocomplete(editorEl, outIdx, pIdx) {
     const daftarIstilah = buku.istilah || [];
     if (!daftarIstilah.length) return tutupAutocomplete();
 
-    const fullTrigger = matchIstilah[1]; // contoh: "/" atau "/du"
+    const fullTrigger = matchIstilah[1];
     const query = fullTrigger.slice(1).toLowerCase();
 
     const cocokIstilah = daftarIstilah
@@ -1049,7 +1287,6 @@ function terapkanPilihanAutocomplete(idx) {
   el.focus();
   const sel = window.getSelection();
   if (sel && sel.rangeCount > 0) {
-    // Hapus prefix ("/du" atau "ar") tepat di belakang kursor lalu sisipkan teks terpilih
     for (let i = 0; i < prefixLen; i++) {
       sel.modify('extend', 'backward', 'character');
     }
@@ -1178,6 +1415,17 @@ function bukaHasilFinalBab() {
 document.addEventListener('click', (e) => {
   const t = e.target;
 
+  // Backup & Import JSON
+  if (t.closest('#btn-export-json')) exportBackupJSON();
+  if (t.closest('#btn-import-json')) $('input-import-json').click();
+  if (t.closest('#btn-tutup-import') || t.closest('#btn-batal-import')) {
+    $('modal-import-backup').classList.add('hidden');
+    $('input-import-json').value = '';
+    pendingImportBooks = [];
+  }
+  if (t.closest('#btn-import-merge')) terapkanImportBackup('merge');
+  if (t.closest('#btn-import-replace')) terapkanImportBackup('replace');
+
   // Rak & Detail Buku
   if (t.closest('#btn-tambah-buku')) bukaFormBuku(false);
   if (t.closest('#btn-edit-buku')) bukaFormBuku(true);
@@ -1298,6 +1546,12 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Input File Import JSON
+$('input-import-json')?.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) prosesFileImportJSON(file);
+});
+
 // Filter Dropdown Preview
 $('select-filter-preview')?.addEventListener('change', (e) => {
   renderKontenPreview(e.target.value);
@@ -1347,14 +1601,16 @@ $('form-buku-baru')?.addEventListener('submit', (e) => {
     $('modal-buat-buku').classList.add('hidden');
     bukaDetailBuku(idBukuAktif);
   } else {
-    daftarBuku.unshift({
-      id: Date.now().toString(),
-      ...dataForm,
-      tokoh: [],
-      istilah: [],
-      bab: [],
-      dibuatPada: new Date().toISOString()
-    });
+    daftarBuku.unshift(
+      normalisasiBuku({
+        id: Date.now().toString(),
+        ...dataForm,
+        tokoh: [],
+        istilah: [],
+        bab: [],
+        dibuatPada: new Date().toISOString()
+      })
+    );
     simpan();
     renderRakBuku();
     $('modal-buat-buku').classList.add('hidden');
@@ -1485,4 +1741,4 @@ $('form-tambah-outline')?.addEventListener('submit', (e) => {
   renderDaftarOutline();
 });
 
-renderRakBuku();
+inisialisasiAplikasi();

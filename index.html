@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WriterApp - Studio Penulisan Novel</title>
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 
@@ -19,10 +19,25 @@
     </header>
 
     <main class="container">
+      <!-- Bar Status IndexedDB & Backup JSON -->
+      <div class="backup-toolbar">
+        <div class="storage-indicator">
+          <span class="storage-dot"></span>
+          <span id="storage-status-text">Memuat IndexedDB...</span>
+        </div>
+        <div class="backup-actions">
+          <button type="button" id="btn-export-json" class="btn-secondary btn-compact">Export Backup (.json)</button>
+          <button type="button" id="btn-import-json" class="btn-secondary btn-compact">Import Backup (.json)</button>
+          <input type="file" id="input-import-json" accept=".json,application/json" class="hidden">
+        </div>
+      </div>
+
+      <div id="notifikasi-rak" class="copy-toast hidden"></div>
+
       <div id="empty-state" class="empty-state">
         <div class="empty-icon">📚</div>
         <h2>Rak Buku Masih Kosong</h2>
-        <p>Tekan tombol <strong>+ Buku Baru</strong> di pojok kanan atas untuk mulai membuat folder naskah novel pertamamu.</p>
+        <p>Tekan tombol <strong>+ Buku Baru</strong> di pojok kanan atas untuk mulai membuat folder naskah novel pertamamu, atau pulihkan data dari file <strong>Backup (.json)</strong>.</p>
       </div>
       <div id="rak-buku" class="rak-grid"></div>
     </main>
@@ -332,6 +347,33 @@
     </div>
   </div>
 
-  <script src="app.js?v=4"></script>
+  <!-- ================= MODAL KONFIRMASI IMPORT BACKUP JSON ================= -->
+  <div id="modal-import-backup" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Pulihkan Backup (.json)</h3>
+        <button id="btn-tutup-import" class="btn-close" aria-label="Tutup">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div id="import-summary-info" class="import-summary-box"></div>
+        <p class="import-desc">Pilih cara memulihkan naskah ke dalam penyimpanan <strong>IndexedDB</strong> perangkat ini:</p>
+
+        <div class="import-choice-list">
+          <button type="button" id="btn-import-merge" class="btn-primary import-choice-btn">
+            Gabungkan dengan Rak Saat Ini (Aman)
+          </button>
+          <button type="button" id="btn-import-replace" class="btn-danger import-choice-btn">
+            Timpa Semua Data Rak Saat Ini
+          </button>
+          <button type="button" id="btn-batal-import" class="btn-secondary import-choice-btn">
+            Batal
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=5"></script>
 </body>
 </html>
