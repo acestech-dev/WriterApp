@@ -3,32 +3,160 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WriterApp - Rak Buku</title>
-  <link rel="stylesheet" href="style.css?v=2">
+  <title>WriterApp - Studio Penulisan Novel</title>
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
-  <!-- Header Sticky -->
-  <header class="topbar">
-    <div class="topbar-kiri">
-      <span class="brand">WRITERAPP</span>
-      <span id="jumlah-buku" class="badge-count">0 Buku</span>
-    </div>
-    <button id="btn-tambah-buku" class="btn-primary">+ Buku Baru</button>
-  </header>
+  <!-- ================= VIEW 1: RAK BUKU ================= -->
+  <section id="view-rak">
+    <header class="topbar">
+      <div class="topbar-kiri">
+        <span class="brand">WRITERAPP</span>
+        <span id="jumlah-buku" class="badge-count">0 Buku</span>
+      </div>
+      <button id="btn-tambah-buku" class="btn-primary">+ Buku Baru</button>
+    </header>
 
-  <!-- Area Utama Rak Buku -->
-  <main class="container">
-    <div id="empty-state" class="empty-state">
-      <div class="empty-icon">📚</div>
-      <h2>Rak Buku Masih Kosong</h2>
-      <p>Tekan tombol <strong>+ Buku Baru</strong> di pojok kanan atas untuk mulai membuat folder naskah novel pertamamu.</p>
-    </div>
+    <main class="container">
+      <div id="empty-state" class="empty-state">
+        <div class="empty-icon">📚</div>
+        <h2>Rak Buku Masih Kosong</h2>
+        <p>Tekan tombol <strong>+ Buku Baru</strong> di pojok kanan atas untuk mulai membuat folder naskah novel pertamamu.</p>
+      </div>
+      <div id="rak-buku" class="rak-grid"></div>
+    </main>
+  </section>
 
-    <div id="rak-buku" class="rak-grid"></div>
-  </main>
+  <!-- ================= VIEW 2: DAFTAR BAB ================= -->
+  <section id="view-bab-list" class="hidden">
+    <header class="topbar">
+      <div class="topbar-kiri">
+        <button id="btn-kembali-rak" class="btn-ghost">&larr; Rak Buku</button>
+        <span id="bab-view-judul-buku" class="topbar-title">Judul Buku</span>
+      </div>
+      <div class="topbar-kanan">
+        <button id="btn-kelola-tokoh-shortcut" class="btn-secondary">Tokoh &amp; Info</button>
+        <button id="btn-tambah-bab" class="btn-primary">+ Bab Baru</button>
+      </div>
+    </header>
 
-  <!-- Modal Buat / Edit Buku -->
+    <main class="container">
+      <div class="bab-summary-bar">
+        <span id="bab-total-info">0 Bab Tersimpan</span>
+        <span id="bab-tokoh-info">0 Tokoh Terdaftar</span>
+      </div>
+
+      <div id="bab-empty-state" class="empty-state">
+        <div class="empty-icon">✍️</div>
+        <h2>Belum Ada Bab</h2>
+        <p>Tekan <strong>+ Bab Baru</strong> untuk mulai menyusun kerangka outline dan menulis bab pertamamu.</p>
+      </div>
+
+      <div id="daftar-bab" class="bab-list"></div>
+    </main>
+  </section>
+
+  <!-- ================= VIEW 3: EDITOR OUTLINE BAB ================= -->
+  <section id="view-editor-bab" class="hidden">
+    <header class="topbar editor-topbar">
+      <div class="topbar-kiri">
+        <button id="btn-kembali-daftar-bab" class="btn-ghost">&larr; Daftar Bab</button>
+        <div class="editor-bab-meta">
+          <span id="editor-judul-bab" class="topbar-title">Judul Bab</span>
+          <button id="btn-edit-meta-bab" class="btn-icon-tiny" title="Ubah judul atau target kata bab">&#9998;</button>
+        </div>
+      </div>
+
+      <div class="topbar-kanan editor-actions">
+        <div id="editor-progress-pill" class="progress-pill">0 / 1.000 Kata</div>
+        <button id="btn-buka-preview" class="btn-secondary">Preview</button>
+        <button id="btn-terapkan-bab" class="btn-success" disabled title="Capai target kata untuk mengaktifkan">Terapkan</button>
+      </div>
+    </header>
+
+    <main class="container editor-container">
+      <!-- Info Kunci Target Kata & Shortcut -->
+      <div class="editor-helper-banner">
+        <span id="pesan-target-kata">Tambahkan poin outline lalu mulai menulis. Tekan <strong>Enter</strong> 1x untuk paragraf baru, dan <strong>Tab</strong> untuk auto-lengkap nama tokoh.</span>
+      </div>
+
+      <!-- Form Tambah Outline -->
+      <form id="form-tambah-outline" class="outline-add-bar">
+        <input type="text" id="input-judul-outline" placeholder="Judul poin outline baru (misal: Memperkenalkan Arka di gerbang akademi)..." autocomplete="off" required>
+        <button type="submit" class="btn-primary">+ Outline</button>
+      </form>
+
+      <!-- Daftar Accordion Outline -->
+      <div id="outline-empty-state" class="tokoh-empty-msg">
+        Belum ada outline pada bab ini. Tambahkan beberapa poin outline di atas untuk mulai menyusun alur cerita.
+      </div>
+      <div id="daftar-outline" class="outline-accordion-list"></div>
+    </main>
+
+    <!-- Popup Autocomplete Tokoh & Alias -->
+    <div id="autocomplete-popup" class="autocomplete-popup hidden"></div>
+  </section>
+
+  <!-- ================= VIEW 4: PREVIEW BAB ================= -->
+  <section id="view-preview-bab" class="hidden">
+    <header class="topbar">
+      <div class="topbar-kiri">
+        <button id="btn-kembali-edit-outline" class="btn-secondary">&larr; Kembali Edit Outline</button>
+        <span id="preview-judul-bab" class="topbar-title">Preview Bab</span>
+      </div>
+      <div class="topbar-kanan">
+        <select id="select-filter-preview" class="select-compact">
+          <option value="ALL">Semua Outline (Gabungan)</option>
+        </select>
+        <button id="btn-terapkan-dari-preview" class="btn-success" disabled>Terapkan</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="preview-info-bar">
+        <span id="preview-word-summary">Total: 0 Kata</span>
+        <span>Judul outline disembunyikan &bull; Indentasi otomatis aktif</span>
+      </div>
+
+      <article id="preview-paper" class="manuscript-paper preview-mode"></article>
+    </main>
+  </section>
+
+  <!-- ================= VIEW 5: HASIL FINAL BAB ================= -->
+  <section id="view-final-bab" class="hidden">
+    <header class="topbar">
+      <div class="topbar-kiri">
+        <button id="btn-final-ke-daftar-bab" class="btn-ghost">&larr; Daftar Bab</button>
+        <span class="status-badge status-tamat">Bab Utuh (Selesai)</span>
+      </div>
+      <div class="topbar-kanan">
+        <button id="btn-edit-ulang-outline" class="btn-secondary">&#9998; Edit Ulang Outline</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- Bar Ekspor & Salin -->
+      <div class="final-toolbar">
+        <div class="final-export-buttons">
+          <button id="btn-salin-novel" class="btn-primary">Salin untuk Platform Novel</button>
+          <button id="btn-unduh-word" class="btn-secondary">Unduh Word (.doc)</button>
+          <button id="btn-unduh-txt" class="btn-secondary">Unduh .TXT</button>
+        </div>
+
+        <button id="btn-toggle-kertas" class="btn-ghost-border" title="Ganti tampilan kertas">Mode Kertas Putih (Teks Hitam)</button>
+      </div>
+
+      <div id="notifikasi-salin" class="copy-toast hidden">Naskah bersih berhasil disalin! Siap ditempel ke Wattpad, Fizzo, atau Webnovel.</div>
+
+      <article id="final-paper" class="manuscript-paper final-mode">
+        <h1 id="final-judul-bab" class="manuscript-chapter-title">Judul Bab</h1>
+        <div id="final-konten-bab"></div>
+      </article>
+    </main>
+  </section>
+
+  <!-- ================= MODAL BUAT / EDIT BUKU ================= -->
   <div id="modal-buat-buku" class="modal-overlay hidden">
     <div class="modal-box">
       <div class="modal-header">
@@ -91,7 +219,7 @@
     </div>
   </div>
 
-  <!-- Modal Detail Buku & Manajemen Tokoh -->
+  <!-- ================= MODAL DETAIL BUKU & TOKOH ================= -->
   <div id="modal-detail-buku" class="modal-overlay hidden">
     <div class="modal-box modal-detail-box">
       <div class="modal-header">
@@ -117,7 +245,6 @@
           <p id="detail-blurb">Belum ada sinopsis.</p>
         </div>
 
-        <!-- Bagian Kelola Tokoh & Alias -->
         <div class="detail-tokoh-section">
           <div class="tokoh-section-header">
             <h4>Daftar Tokoh &amp; Alias</h4>
@@ -126,7 +253,7 @@
 
           <form id="form-tambah-tokoh" class="tokoh-form-card">
             <div class="tokoh-input-row">
-              <input type="text" id="input-nama-tokoh" placeholder="Nama tokoh utama (misal: Indra)..." autocomplete="off" required>
+              <input type="text" id="input-nama-tokoh" placeholder="Nama tokoh utama (misal: Arka)..." autocomplete="off" required>
               <button type="submit" class="btn-primary">+ Tokoh</button>
             </div>
 
@@ -144,7 +271,6 @@
             <p id="error-tokoh" class="inline-error hidden"></p>
           </form>
 
-          <!-- Daftar Dropdown Tokoh -->
           <div id="daftar-tokoh" class="tokoh-accordion-list"></div>
         </div>
 
@@ -156,6 +282,33 @@
     </div>
   </div>
 
-  <script src="app.js?v=2"></script>
+  <!-- ================= MODAL BUAT / EDIT BAB ================= -->
+  <div id="modal-bab-form" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-bab-judul">Buat Bab Baru</h3>
+        <button id="btn-tutup-bab-form" class="btn-close" aria-label="Tutup">&times;</button>
+      </div>
+
+      <form id="form-bab" class="modal-body">
+        <div class="form-group">
+          <label for="input-judul-bab">Judul Bab <span class="wajib">*</span></label>
+          <input type="text" id="input-judul-bab" placeholder="Contoh: Bab 1 - Gerbang Akademi Vanguard" required autocomplete="off">
+        </div>
+
+        <div class="form-group">
+          <label for="input-target-bab">Target Kata Bab Ini</label>
+          <input type="number" id="input-target-bab" value="1000" min="50" step="50" required>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-batal-bab-form" class="btn-secondary">Batal</button>
+          <button type="submit" id="btn-submit-bab" class="btn-primary">Mulai Susun Outline &rarr;</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js?v=3"></script>
 </body>
 </html>
