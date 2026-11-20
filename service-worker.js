@@ -1,23 +1,28 @@
-const CACHE_NAME = 'writerapp-cache-v6';
+const CACHE_NAME = 'writerapp-cache-v7';
 
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './style.css?v=6',
-  './app.js?v=6',
+  './style.css?v=7',
+  './app.js?v=7',
   './manifest.json',
-  './icon.svg'
+  './icon-192.png',
+  './icon-512.png'
 ];
 
-// Instalasi Service Worker & simpan aset inti ke cache offline
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        ASSETS_TO_CACHE.map((url) =>
+          cache.add(url).catch((err) => console.warn('Gagal cache aset:', url, err))
+        )
+      )
+    )
   );
   self.skipWaiting();
 });
 
-// Aktivasi & bersihkan cache versi lama
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -31,7 +36,6 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Strategi Cache-First untuk akses 100% offline dengan fallback ke jaringan
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 

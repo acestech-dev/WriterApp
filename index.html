@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-title" content="WriterApp">
   <title>WriterApp - Studio Penulisan Novel</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/svg+xml" href="icon.svg">
-  <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-512.png">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -227,7 +227,7 @@
           <label for="input-cover">Cover Buku (Opsional)</label>
           <input type="file" id="input-cover" accept="image/*">
           <div id="preview-cover-box" class="preview-cover-box hidden">
-            <img id="preview-cover-img" src="" alt="Pratinjau Cover">
+            <img id="preview-cover-img" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Pratinjau Cover">
             <button type="button" id="btn-hapus-cover" class="btn-hapus-img">Hapus Gambar</button>
           </div>
         </div>
@@ -382,7 +382,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
