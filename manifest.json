@@ -1,0 +1,27 @@
+{
+  "name": "WriterApp - Studio Penulisan Novel",
+  "short_name": "WriterApp",
+  "description": "Aplikasi penulisan novel offline berbasis outline dengan manajemen tokoh, alias, dan efek bunyi.",
+  "id": "./",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#121212",
+  "theme_color": "#1e1e1e",
+  "categories": ["books", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
